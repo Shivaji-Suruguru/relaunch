@@ -42,46 +42,57 @@ export const OnboardingPage = ({ user, onComplete }) => {
   const validate = () => {
     let newErrs = {};
     setGeneralError('');
-    if (step === 1) {
-      if (!data.prevTitle) newErrs.prevTitle = 'Required';
-      if (!data.prevIndustry) newErrs.prevIndustry = 'Required';
-      if (data.yearsExp === '') {
-        newErrs.yearsExp = 'Required';
-      } else if (isNaN(data.yearsExp) || parseFloat(data.yearsExp) < 0) {
-        newErrs.yearsExp = 'Enter a valid number of years';
+    // Validation logic
+    const validateStep = (s) => {
+      let stepErrs = {};
+      if (s === 1) {
+        if (!data.prevTitle) stepErrs.prevTitle = 'Required';
+        if (!data.prevIndustry) stepErrs.prevIndustry = 'Required';
+        if (data.yearsExp === '' || data.yearsExp === null) {
+          stepErrs.yearsExp = 'Required';
+        } else if (isNaN(data.yearsExp) || parseFloat(data.yearsExp) < 0) {
+          stepErrs.yearsExp = 'Enter a valid number';
+        }
+        if (!data.prevResponsibilities) stepErrs.prevResponsibilities = 'Required';
+      } else if (s === 2) {
+        if (!data.breakDuration) stepErrs.breakDuration = 'Required';
+        if (!data.breakReason) stepErrs.breakReason = 'Required';
+      } else if (s === 3) {
+        if (!data.targetTitle) stepErrs.targetTitle = 'Required';
+        if (!data.targetIndustry) stepErrs.targetIndustry = 'Required';
+        if (data.workType.length === 0) stepErrs.workType = 'Select at least 1';
+        if (!data.relocation) stepErrs.relocation = 'Required';
+      } else if (s === 4) {
+        if (data.techSkills.length === 0) stepErrs.techSkills = 'Select at least 1 skill';
+      } else if (s === 5) {
+        if (!data.timeline) stepErrs.timeline = 'Required';
+        if (!data.salaryRange) stepErrs.salaryRange = 'Required';
+        if (!data.biggestChallenge) stepErrs.biggestChallenge = 'Required';
       }
-      if (!data.prevResponsibilities) newErrs.prevResponsibilities = 'Required';
-    } else if (step === 2) {
-      if (!data.breakDuration) newErrs.breakDuration = 'Required';
-      if (!data.breakReason) newErrs.breakReason = 'Required';
-    } else if (step === 3) {
-      if (!data.targetTitle) newErrs.targetTitle = 'Required';
-      if (!data.targetIndustry) newErrs.targetIndustry = 'Required';
-      if (data.workType.length === 0) newErrs.workType = 'Select at least 1 preference';
-      if (!data.relocation) newErrs.relocation = 'Required';
-    } else if (step === 4) {
-      if (data.techSkills.length === 0) newErrs.techSkills = 'Select at least 1 technical skill';
-    } else if (step === 5) {
-      if (!data.timeline) newErrs.timeline = 'Required';
-      if (!data.salaryRange) newErrs.salaryRange = 'Required';
-      if (!data.biggestChallenge) newErrs.biggestChallenge = 'Required';
-    }
 
-    // Map fields to steps for "Other" validation
-    const stepFields = {
-      1: ['prevIndustry'],
-      2: ['breakDuration', 'breakReason'],
-      3: ['targetIndustry'],
-      5: ['timeline', 'salaryRange']
+      // "Other" validation for this specific step
+      const stepFields = { 1: ['prevIndustry'], 2: ['breakDuration', 'breakReason'], 3: ['targetIndustry'], 5: ['timeline', 'salaryRange'] };
+      (stepFields[s] || []).forEach(key => {
+        if (data[key] === 'Other' && (!otherInputs[key] || !otherInputs[key].trim())) {
+          stepErrs[key] = 'Specify details';
+        }
+      });
+      return stepErrs;
     };
 
-    // Validation for "Other" fields in current step only
-    (stepFields[step] || []).forEach(key => {
-      if (data[key] === 'Other' && (!otherInputs[key] || !otherInputs[key].trim())) {
-        newErrs[key] = 'Please specify details';
-      }
-    });
+    if (step < 5) {
+        newErrs = validateStep(step);
+    } else {
+        // Final submit: Validate EVERYTHING to prevent bad payloads
+        for(let i=1; i<=5; i++) {
+            newErrs = { ...newErrs, ...validateStep(i) };
+        }
+    }
 
+    if (Object.keys(newErrs).length > 0) {
+      console.log("❌ Validation failed:", newErrs);
+    }
+    
     setErrors(newErrs);
     if (Object.keys(newErrs).length > 0) {
       setGeneralError('Please fill in all required fields marked with *');
@@ -96,53 +107,47 @@ export const OnboardingPage = ({ user, onComplete }) => {
   };
 
   const handleSubmit = async () => {
-    console.log("Analyze clicked. Current state:", data);
+    console.log("✨ Final 'Analyze' clicked. Step:", step);
     if (validate()) {
       setIsSubmitting(true);
-      console.log("Validation passed. Saving to Supabase...");
-      if (user?.id) {
-        try {
-          const submissionData = { ...data };
-          Object.keys(otherInputs).forEach(key => {
-            if (data[key] === 'Other') {
-              submissionData[key] = otherInputs[key].trim();
-            }
-          });
-
-          console.log("🚀 Transitioning: Calling onComplete and saving data in background...");
-          
-          // Execute background saves so user flow isn't blocked by DB latency/errors
-          supabase.from('onboarding_data').insert({ 
-            user_id: user.id, 
-            ...submissionData, 
-            created_at: new Date().toISOString() 
-          }).then(({ error }) => {
-            if (error) console.error("❌ Background Save (onboarding_data) failed:", error.message);
-            else console.log("✅ Background Save (onboarding_data) successful");
-          });
-
-          supabase.from('profiles').upsert({ 
-            id: user.id, 
-            full_name: user.name, 
-            email: user.email, 
-            onboarding_complete: true 
-          }).then(({ error }) => {
-            if (error) console.error("❌ Background Save (profiles) failed:", error.message);
-            else console.log("✅ Background Save (profiles) successful");
-          });
-
-          // Move to next page immediately
-          onComplete(submissionData);
-        } catch (e) {
-          console.error("Critical error in handleSubmit logic:", e);
-          onComplete(data); 
-        } finally {
-          setIsSubmitting(false);
+      console.log("✅ All validations passed. Preparing submission...");
+      
+      const submissionData = { ...data };
+      Object.keys(otherInputs).forEach(key => {
+        if (data[key] === 'Other') {
+          submissionData[key] = otherInputs[key].trim();
         }
-      } else {
-        onComplete(data);
-        setIsSubmitting(false);
+      });
+
+      if (user?.id) {
+        console.log("💾 Saving to Supabase (non-blocking) for user:", user.id);
+        
+        // Background saves
+        supabase.from('onboarding_data').upsert({ 
+          user_id: user.id, 
+          ...submissionData, 
+          created_at: new Date().toISOString() 
+        }).then(({ error }) => {
+          if (error) console.error("❌ onboarding_data save error:", error.message);
+          else console.log("✅ onboarding_data saved.");
+        });
+
+        supabase.from('profiles').upsert({ 
+          id: user.id, 
+          full_name: user.name, 
+          email: user.email, 
+          onboarding_complete: true 
+        }).then(({ error }) => {
+          if (error) console.error("❌ profiles save error:", error.message);
+          else console.log("✅ profile updated (onboarding marked complete).");
+        });
       }
+
+      console.log("🏁 Triggering onComplete to start AI analysis...");
+      onComplete(submissionData);
+    } else {
+      console.error("🚫 Submission blocked by validation errors.");
+      setGeneralError('Some required fields are missing.');
     }
   };
 
