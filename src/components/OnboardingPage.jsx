@@ -21,7 +21,7 @@ export const OnboardingPage = ({ user, onComplete }) => {
     timeline: '', salaryRange: '', studyHours: 8, biggestChallenge: ''
   });
   const [otherInputs, setOtherInputs] = useState({
-    prevIndustry: '', yearsExp: '', breakDuration: '', breakReason: '', 
+    prevIndustry: '', breakDuration: '', breakReason: '', 
     targetIndustry: '', timeline: '', salaryRange: ''
   });
   const [customTech, setCustomTech] = useState('');
@@ -44,7 +44,11 @@ export const OnboardingPage = ({ user, onComplete }) => {
     if (step === 1) {
       if (!data.prevTitle) newErrs.prevTitle = 'Required';
       if (!data.prevIndustry) newErrs.prevIndustry = 'Required';
-      if (!data.yearsExp) newErrs.yearsExp = 'Required';
+      if (!data.yearsExp) {
+        newErrs.yearsExp = 'Required';
+      } else if (isNaN(data.yearsExp) || parseFloat(data.yearsExp) < 0) {
+        newErrs.yearsExp = 'Enter a valid number of years';
+      }
       if (!data.prevResponsibilities) newErrs.prevResponsibilities = 'Required';
     } else if (step === 2) {
       if (!data.breakDuration) newErrs.breakDuration = 'Required';
@@ -168,13 +172,15 @@ export const OnboardingPage = ({ user, onComplete }) => {
                   )}
                 </div>
                 <div>
-                  <label>Years of Experience* {errors.yearsExp && <span style={{ color: 'red', fontSize: '12px' }}> - {errors.yearsExp}</span>}</label>
-                  <select value={data.yearsExp} onChange={e => setData({ ...data, yearsExp: e.target.value })}>
-                    <option value="">Select...</option><option value="1-3">1-3 years</option><option value="4-7">4-7 years</option><option value="8-12">8-12 years</option><option value="Other">Other</option>
-                  </select>
-                  {data.yearsExp === 'Other' && (
-                    <input type="text" placeholder="Specify years..." value={otherInputs.yearsExp} onChange={e => setOtherInputs({ ...otherInputs, yearsExp: e.target.value })} style={{ marginTop: '8px' }} />
-                  )}
+                  <label>Total Experience (Years)* {errors.yearsExp && <span style={{ color: 'red', fontSize: '12px' }}> - {errors.yearsExp}</span>}</label>
+                  <input 
+                    type="number" 
+                    step="0.1" 
+                    min="0" 
+                    placeholder="e.g. 5.5 (for 5 years and 6 months)" 
+                    value={data.yearsExp} 
+                    onChange={e => setData({ ...data, yearsExp: e.target.value })} 
+                  />
                 </div>
                 <div><label>Key Responsibilities & Achievements* {errors.prevResponsibilities && <span style={{ color: 'red', fontSize: '12px' }}> - {errors.prevResponsibilities}</span>}</label><textarea rows={4} value={data.prevResponsibilities} onChange={e => setData({ ...data, prevResponsibilities: e.target.value })} /></div>
               </div>
