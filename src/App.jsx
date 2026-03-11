@@ -33,21 +33,34 @@ const App = () => {
   }, []);
 
   const checkUser = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-      await fetchProfileAndSetState(session.user);
+    console.log("🔍 Checking user session...");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        console.log("👤 Session found for:", session.user.email);
+        await fetchProfileAndSetState(session.user);
+      } else {
+        console.log("📭 No session found.");
+      }
+    } catch (err) {
+      console.error("❌ Session check failed:", err.message);
     }
     setLoading(false);
   };
 
   const fetchProfileAndSetState = async (authUser) => {
+    console.log("📄 Fetching profile for ID:", authUser.id);
     try {
-      const { data: profile } = await supabase
+      const { data: profile, error: pError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', authUser.id)
         .single();
       
+      if (pError && pError.code !== 'PGRST116') {
+        console.warn("⚠️ Profile table error:", pError.message);
+      }
+
       const { data: latestAnalysis } = await supabase
         .from('analyses')
         .select('*')
@@ -63,13 +76,15 @@ const App = () => {
       });
 
       if (profile?.onboarding_complete) {
+        console.log("✅ Onboarding complete, navigating to dashboard.");
         setAnalysis(latestAnalysis);
         setPage('dashboard');
       } else {
+        console.log("📝 Onboarding incomplete, navigating to onboarding.");
         setPage('onboarding');
       }
     } catch (err) {
-      console.warn("Error fetching profile:", err.message);
+      console.warn("❗ Error in fetchProfileAndSetState:", err.message);
       setPage('onboarding');
     }
   };
