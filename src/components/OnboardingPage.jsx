@@ -44,7 +44,7 @@ export const OnboardingPage = ({ user, onComplete }) => {
     if (step === 1) {
       if (!data.prevTitle) newErrs.prevTitle = 'Required';
       if (!data.prevIndustry) newErrs.prevIndustry = 'Required';
-      if (!data.yearsExp) {
+      if (data.yearsExp === '') {
         newErrs.yearsExp = 'Required';
       } else if (isNaN(data.yearsExp) || parseFloat(data.yearsExp) < 0) {
         newErrs.yearsExp = 'Enter a valid number of years';
@@ -66,8 +66,16 @@ export const OnboardingPage = ({ user, onComplete }) => {
       if (!data.biggestChallenge) newErrs.biggestChallenge = 'Required';
     }
 
-    // Validation for "Other" fields
-    Object.keys(otherInputs).forEach(key => {
+    // Map fields to steps for "Other" validation
+    const stepFields = {
+      1: ['prevIndustry'],
+      2: ['breakDuration', 'breakReason'],
+      3: ['targetIndustry'],
+      5: ['timeline', 'salaryRange']
+    };
+
+    // Validation for "Other" fields in current step only
+    (stepFields[step] || []).forEach(key => {
       if (data[key] === 'Other' && (!otherInputs[key] || !otherInputs[key].trim())) {
         newErrs[key] = 'Please specify details';
       }
@@ -87,7 +95,9 @@ export const OnboardingPage = ({ user, onComplete }) => {
   };
 
   const handleSubmit = async () => {
+    console.log("Submit clicked. Validating...", data);
     if (validate()) {
+      console.log("Validation passed. Submitting to Supabase...");
       if (user?.id) {
         try {
           const submissionData = { ...data };
@@ -331,7 +341,7 @@ export const OnboardingPage = ({ user, onComplete }) => {
                 <div><label>Biggest Challenge Right Now* {errors.biggestChallenge && <span style={{ color: 'red', fontSize: '12px' }}> - {errors.biggestChallenge}</span>}</label><textarea rows={3} value={data.biggestChallenge} onChange={e => setData({ ...data, biggestChallenge: e.target.value })} /></div>
               </div>
               <div style={{ marginTop: '32px', padding: '16px', background: 'rgba(124, 61, 110, 0.05)', borderRadius: '12px', border: '1px solid var(--border)' }}>
-                <p style={{ color: 'var(--plum)', fontWeight: 500, fontSize: '14px', textAlign: 'center' }}>Your answers are about to be analyzed by our AI. You'll receive a Readiness Score, personalized skill gap report, top job matches, and a 12-week roadmap.</p>
+                <p style={{ color: 'var(--plum)', fontWeight: 500, fontSize: '14px', textAlign: 'center' }}>Your answers are about to be analyzed by our AI. You'll receive a Readiness Score, personalized skill gap report, and top job matches.</p>
               </div>
             </div>
           )}
