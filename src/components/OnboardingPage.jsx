@@ -109,25 +109,32 @@ export const OnboardingPage = ({ user, onComplete }) => {
             }
           });
 
-          const { error: onboardErr } = await supabase.from('onboarding_data').insert({ 
+          console.log("🚀 Transitioning: Calling onComplete and saving data in background...");
+          
+          // Execute background saves so user flow isn't blocked by DB latency/errors
+          supabase.from('onboarding_data').insert({ 
             user_id: user.id, 
             ...submissionData, 
             created_at: new Date().toISOString() 
+          }).then(({ error }) => {
+            if (error) console.error("❌ Background Save (onboarding_data) failed:", error.message);
+            else console.log("✅ Background Save (onboarding_data) successful");
           });
-          if (onboardErr) throw onboardErr;
-          
-          const { error: profileErr } = await supabase.from('profiles').upsert({ 
+
+          supabase.from('profiles').upsert({ 
             id: user.id, 
             full_name: user.name, 
             email: user.email, 
             onboarding_complete: true 
+          }).then(({ error }) => {
+            if (error) console.error("❌ Background Save (profiles) failed:", error.message);
+            else console.log("✅ Background Save (profiles) successful");
           });
-          if (profileErr) throw profileErr;
 
-          console.log("Data saved successfully. Moving to analysis...");
+          // Move to next page immediately
           onComplete(submissionData);
         } catch (e) {
-          console.error("Critical: Failed to save onboarding session:", e);
+          console.error("Critical error in handleSubmit logic:", e);
           onComplete(data); 
         } finally {
           setIsSubmitting(false);
