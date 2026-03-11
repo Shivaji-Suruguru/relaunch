@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { ChevronLeft, RotateCcw, CheckCircle } from 'lucide-react';
-import { supabase } from '../lib/supabase';
 
 export const AuthPage = ({ mode: initialMode, onAuth, onBack }) => {
   const [mode, setMode] = useState(initialMode);
@@ -16,64 +15,34 @@ export const AuthPage = ({ mode: initialMode, onAuth, onBack }) => {
     
     if (mode === 'signup' && !formData.name) return setError('Name is required');
     if (!formData.email.includes('@')) return setError('Valid email is required');
-    
     if (formData.password.length < 6) return setError('Password must be at least 6 characters');
     if (mode === 'signup' && formData.password !== formData.confirm) return setError('Passwords do not match');
 
     setLoading(true);
     try {
+      const endpoint = mode === 'signup' ? '/api/auth/signup' : '/api/auth/login';
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+      
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Authentication failed');
+
       if (mode === 'signup') {
-        const { data, error } = await supabase.auth.signUp({
-          email: formData.email,
-          password: formData.password,
-          options: { data: { full_name: formData.name } }
-        });
-        if (error) throw error;
+        // Send welcome email (non-blocking)
+        fetch('/api/welcome', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: formData.email, name: formData.name })
+        }).catch(err => console.warn("Welcome email failed:", err));
         
-        if (data.user) {
-          // Send welcome email (non-blocking)
-          fetch('/api/welcome', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: formData.email, name: formData.name })
-          }).catch(err => console.warn("Welcome email failed:", err));
-
-          const { error: upsertError } = await supabase.from('profiles').upsert({ 
-            id: data.user.id, 
-            full_name: formData.name, 
-            email: formData.email,
-            onboarding_complete: false 
-          });
-          if (upsertError) console.warn("Profile upsert failed:", upsertError.message);
-        }
-        
-        setMessage('Check your email for the confirmation link!');
-        if (data?.session) {
-          onAuth({ name: formData.name, email: formData.email, id: data.user.id }, true);
-        }
+        onAuth(data, true); // true = needs onboarding
       } else {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: formData.email,
-          password: formData.password
-        });
-        if (error) throw error;
-
-        const { data: profile, error: pError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', data.user.id)
-          .single();
-        
-        if (pError && pError.code !== 'PGRST116') throw pError;
-
-        onAuth({ 
-          name: profile?.full_name || data.user.user_metadata?.full_name || 'User', 
-          email: formData.email, 
-          id: data.user.id 
-        }, !profile?.onboarding_complete);
+        onAuth(data, !data.onboarding_complete);
       }
     } catch (err) {
-      console.warn('Auth Error:', err.message);
       setError(err.message);
     } finally {
       setLoading(false);

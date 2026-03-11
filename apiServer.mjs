@@ -1,125 +1,194 @@
 /**
- * Local API server for development — runs on port 3001.
- * Serves /api/analyze so Vite can proxy to it during local dev.
- * Uses GEMINI_API_KEY from .env automatically via dotenv.
+ * RE-ENTRY BACKEND SERVER (Neon/PostgreSQL + Gemini + Resend)
+ * This server replaces all Supabase functionality.
  */
 import 'dotenv/config';
 import http from 'http';
-
 import nodemailer from 'nodemailer';
+import pg from 'pg';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
+const { Pool } = pg;
 const PORT = 3001;
+const JWT_SECRET = 'relaunch-super-secret-key-123';
 
-// --- SMTP Configuration ---
+// --- Database Connection (Neon) ---
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL + (process.env.DATABASE_URL.includes('?') ? '&' : '?') + 'sslmode=verify-full',
+});
+
+// --- SMTP Configuration (Resend) ---
 const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.resend.com',
-    port: parseInt(process.env.SMTP_PORT || '465'),
-    secure: true,
-    auth: {
-        user: process.env.SMTP_USER || 'resend',
-        pass: process.env.SMTP_PASS || 're_4tkRynZx_DHgnuGvU4D5FprKUVs6UhhxE'
-    }
+  host: process.env.SMTP_HOST,
+  port: parseInt(process.env.SMTP_PORT || '465'),
+  secure: true,
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS
+  }
 });
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
 
-async function sendEmail(to, subject, html) {
-    try {
-        await transporter.sendMail({
-            from: process.env.SMTP_FROM || '"RelaunchAI" <onboarding@suhask.dev>',
-            to,
-            subject,
-            html
-        });
-        console.log(`📧 Email sent to ${to}`);
-    } catch (err) {
-        console.error('❌ Failed to send email:', err.message);
-    }
-}
-
-async function callGemini(prompt, retries = 2) {
-    console.log(`\n🤖 [GEMINI REQUEST]:\n${prompt}\n`);
-    for (let attempt = 0; attempt < retries; attempt++) {
-        const response = await fetch(GEMINI_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: { temperature: 0.7, maxOutputTokens: 2048, responseMimeType: 'application/json' }
-            })
-        });
-        const data = await response.json();
-        console.log(`\n🤖 [GEMINI RESPONSE DATA]:\n${JSON.stringify(data, null, 2)}\n`);
-        
-        if (data?.error) {
-            const code = data.error.code;
-            console.error(`Gemini API error (attempt ${attempt + 1}): [${code}] ${data.error.message}`);
-            if (code === 429 && attempt < retries - 1) {
-                console.log('Rate limited. Retrying in 12 seconds...');
-                await new Promise(r => setTimeout(r, 12000));
-                continue;
-            }
-            throw new Error(`Gemini API error ${code}: ${data.error.message}`);
-        }
-        const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-        const clean = raw.replace(/```json|```/g, '').trim();
-        const parsed = JSON.parse(clean || '{}');
-        return parsed;
-    }
-    throw new Error('Max retries exceeded');
-}
-
+// --- Helper Functions ---
 function sendJson(res, status, data) {
-    const body = JSON.stringify(data);
-    res.writeHead(status, {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Content-Length': Buffer.byteLength(body)
-    });
-    res.end(body);
+  const body = JSON.stringify(data);
+  res.writeHead(status, {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Content-Length': Buffer.byteLength(body)
+  });
+  res.end(body);
 }
 
 async function getBody(req) {
-    return new Promise((resolve) => {
-        let data = '';
-        req.on('data', chunk => data += chunk);
-        req.on('end', () => {
-            try { resolve(JSON.parse(data)); } catch { resolve({}); }
-        });
+  return new Promise((resolve) => {
+    let data = '';
+    req.on('data', chunk => data += chunk);
+    req.on('end', () => {
+      try { resolve(JSON.parse(data)); } catch { resolve({}); }
     });
+  });
 }
 
+async function callGemini(prompt) {
+  console.log(`🤖 [GEMINI REQUEST]`);
+  const response = await fetch(GEMINI_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.7, maxOutputTokens: 2048, responseMimeType: 'application/json' }
+    })
+  });
+  const data = await response.json();
+  if (data?.error) throw new Error(data.error.message);
+  const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  const clean = raw.replace(/```json|```/g, '').trim();
+  return JSON.parse(clean || '{}');
+}
+
+// --- Main Server ---
 const server = http.createServer(async (req, res) => {
-    if (req.method === 'OPTIONS') { sendJson(res, 204, {}); return; }
-    const body = await getBody(req);
-    
-    if (req.url === '/api/welcome') {
-        const { email, name } = body;
-        await sendEmail(email, "Welcome to Re•Entry!", `
-            <h1>Hi ${name || 'there'}!</h1>
-            <p>Welcome to Re•Entry. We are excited to help you start your career comeback journey.</p>
-            <p>You can now access your personalized roadmap and AI-driven career tools.</p>
-            <br/>
-            <p>Best regards,</p>
-            <p>The Re•Entry Team</p>
-        `);
-        sendJson(res, 200, { success: true });
-        return;
+  if (req.method === 'OPTIONS') { sendJson(res, 204, {}); return; }
+  
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const body = await getBody(req);
+
+  try {
+    // 1. Database Initialization (Manual trigger if needed)
+    if (url.pathname === '/api/init-db') {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          id SERIAL PRIMARY KEY,
+          email TEXT UNIQUE NOT NULL,
+          password TEXT NOT NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS profiles (
+          user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+          full_name TEXT,
+          email TEXT,
+          onboarding_complete BOOLEAN DEFAULT FALSE,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS onboarding_data (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+          data JSONB,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS analyses (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+          result JSONB,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+      `);
+      return sendJson(res, 200, { message: "Database tables initialized!" });
     }
 
-    if (req.method !== 'POST') { sendJson(res, 405, { error: 'Method not allowed' }); return; }
-    const { name, prevTitle, prevIndustry, yearsExp, prevResponsibilities, breakDuration, breakReason,
-        breakActivities, targetTitle, targetIndustry, workType, techSkills, softSkills, tools,
-        confidence, timeline, salaryRange, studyHours, biggestChallenge } = body;
+    // 2. Authentication: Signup
+    if (url.pathname === '/api/auth/signup') {
+      const { email, password, name } = body;
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const userResult = await pool.query(
+        'INSERT INTO users (email, password) VALUES ($1, $2) RETURNING id',
+        [email, hashedPassword]
+      );
+      const userId = userResult.rows[0].id;
+      await pool.query(
+        'INSERT INTO profiles (user_id, full_name, email) VALUES ($1, $2, $3)',
+        [userId, name, email]
+      );
+      const token = jwt.sign({ userId, email }, JWT_SECRET);
+      return sendJson(res, 200, { user: { id: userId, email, name }, token });
+    }
 
-    console.log(`\n✨ AI Request received for: ${name || 'User'} → Target: ${targetTitle}`);
-    console.log(`📦 Incoming Payload: ${JSON.stringify(body, null, 2)}`);
+    // 3. Authentication: Login
+    if (url.pathname === '/api/auth/login') {
+      const { email, password } = body;
+      const userResult = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+      if (userResult.rows.length === 0) return sendJson(res, 401, { error: "User not found" });
+      
+      const user = userResult.rows[0];
+      const valid = await bcrypt.compare(password, user.password);
+      if (!valid) return sendJson(res, 401, { error: "Invalid password" });
 
-    const prompt = `
-You are an expert AI career coach specializing in helping women professionals return to work after career breaks. Analyze the following user profile and return a detailed, personalized career comeback plan.
+      const profileResult = await pool.query('SELECT * FROM profiles WHERE user_id = $1', [user.id]);
+      const profile = profileResult.rows[0];
+      const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET);
+      
+      return sendJson(res, 200, { 
+        user: { id: user.id, email: user.email, name: profile?.full_name }, 
+        token,
+        onboarding_complete: profile?.onboarding_complete 
+      });
+    }
+
+    // 4. Get User Profile & Analysis
+    if (url.pathname === '/api/user/data') {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) return sendJson(res, 401, { error: "Unauthorized" });
+      const token = authHeader.split(' ')[1];
+      const decoded = jwt.verify(token, JWT_SECRET);
+      
+      const userId = decoded.userId;
+      const profile = await pool.query('SELECT * FROM profiles WHERE user_id = $1', [userId]);
+      const onboarding = await pool.query('SELECT * FROM onboarding_data WHERE user_id = $1', [userId]);
+      const analysis = await pool.query('SELECT * FROM analyses WHERE user_id = $1', [userId]);
+
+      return sendJson(res, 200, {
+        profile: profile.rows[0],
+        onboardingData: onboarding.rows[0]?.data,
+        analysis: analysis.rows[0]?.result
+      });
+    }
+
+    if (url.pathname === '/api/welcome') {
+      const { email, name } = body;
+      await transporter.sendMail({
+        from: process.env.SMTP_FROM || '"RelaunchAI" <onboarding@suhask.dev>',
+        to: email,
+        subject: "Welcome to Re•Entry!",
+        html: `<h1>Hi ${name || 'there'}!</h1><p>Welcome to Re•Entry. Your comeback starts now.</p>`
+      });
+      return sendJson(res, 200, { success: true });
+    }
+
+    // 5. Onboarding & AI Analysis
+    if (url.pathname === '/api/analyze') {
+      const { user_id, name, ...onboardingPayload } = body;
+      const { prevTitle, prevIndustry, yearsExp, prevResponsibilities, breakDuration, breakReason, breakActivities, targetTitle, targetIndustry, workType, techSkills, softSkills, tools, confidence, timeline, salaryRange, studyHours, biggestChallenge } = onboardingPayload;
+      
+      console.log(`\n✨ AI Request for: ${name || 'User'} → Target: ${targetTitle}`);
+
+      const prompt = `
+You are an expert AI career coach specializing in helping women professionals return to work after career breaks. Analyze the profile and return a detailed, personalized career comeback plan.
 
 USER PROFILE:
 - Name: ${name || 'User'}
@@ -140,65 +209,112 @@ USER PROFILE:
 - Weekly Study Hours Available: ${studyHours}
 - Biggest Challenge: ${biggestChallenge}
 
-Return ONLY a pure JSON object (no markdown, no fences) with this exact structure:
+Return ONLY a pure JSON object string without any markdown fences or formatting with this exact structure:
 {
   "readinessScore": 85,
-  "headline": "short professional headline",
-  "summary": "2-3 sentence personalized career summary",
-  "keyStrengths": ["strength 1","strength 2","strength 3","strength 4"],
-  "skillGaps": [
-    { "skill": "", "priority": "high", "timeToLearn": "", "reason": "" }
-  ],
-  "topRoles": [
-    { "title": "", "matchScore": 85, "industry": "", "salaryRange": "", "reason": "" }
-  ],
-  "roadmap": [
-    { "phase": 1, "title": "Foundation & Refresh", "duration": "Weeks 1-2", "tasks": ["","",""], "milestone": "" }
-  ],
-  "immediateActions": [
-    { "priority": 1, "action": "", "timeframe": "Today" }
-  ],
-  "confidenceBoost": "personalized motivational message that directly addresses the user's stated biggest challenge"
+  "headline": "",
+  "summary": "",
+  "keyStrengths": [],
+  "skillGaps": [{ "skill": "", "priority": "high", "timeToLearn": "", "reason": "" }],
+  "topRoles": [{ "title": "", "matchScore": 85, "industry": "", "salaryRange": "", "reason": "" }],
+  "roadmap": [{ "phase": 1, "title": "", "duration": "", "tasks": [], "milestone": "" }],
+  "immediateActions": [{ "priority": 1, "action": "", "timeframe": "" }],
+  "confidenceBoost": ""
 }
 `;
 
-    try {
-        if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not set');
-        const result = await callGemini(prompt);
-        if (!result.readinessScore) throw new Error('Invalid AI response structure');
-        console.log(`✅ Gemini analysis complete. Score: ${result.readinessScore}`);
-        sendJson(res, 200, result);
-    } catch (err) {
-        console.error(`❌ Gemini error: ${err.message}. Sending smart fallback.`);
-        sendJson(res, 200, {
-            readinessScore: 78,
-            headline: `Strategic ${targetTitle} returning from purposeful break`,
-            summary: `Your ${yearsExp} background in ${prevIndustry} gives you a unique edge. Your resilience during your break makes you stand out in ${targetIndustry} roles.`,
-            keyStrengths: ['Cross-functional communication', 'Adaptability under pressure', 'Strategic planning', 'Empathy and team leadership'],
-            skillGaps: [
-                { skill: 'Advanced Industry Tools', priority: 'high', timeToLearn: '2 weeks', reason: 'Standard requirement for target role' },
-                { skill: 'Modern API Integrations', priority: 'medium', timeToLearn: '3 weeks', reason: 'Core domain knowledge needed' }
-            ],
-            topRoles: [
-                { title: targetTitle, matchScore: 88, industry: targetIndustry, salaryRange: salaryRange, reason: 'Direct skill transfer from past roles.' }
-            ],
-            roadmap: [
-                { phase: 1, title: 'Foundation & Refresh', duration: 'Weeks 1-2', tasks: ['Resume optimization', 'LinkedIn update', 'Network outreach'], milestone: 'Profile ready for views' },
-                { phase: 2, title: 'Skill Building', duration: 'Weeks 3-6', tasks: ['Complete foundational courses', 'Build 1 portfolio project', 'Mock interviews'], milestone: '1 polished project live' },
-                { phase: 3, title: 'Active Job Search', duration: 'Weeks 7-10', tasks: ['Apply to 10 targeted roles', 'Attend 3 intro calls', 'Tailor cover letters'], milestone: '3 first-round interviews' },
-                { phase: 4, title: 'Interview & Offer', duration: 'Weeks 11-12', tasks: ['Final round prep', 'Offer negotiation', 'Acceptance setup'], milestone: 'Signed offer letter' }
-            ],
-            immediateActions: [
-                { priority: 1, action: `Finalize your ${targetTitle} resume`, timeframe: 'Today' },
-                { priority: 2, action: 'Connect with 5 former colleagues on LinkedIn', timeframe: 'This week' }
-            ],
-            confidenceBoost: `You've managed complex situations with grace during your break. Your concern about "${biggestChallenge}" is valid, but your proven track record speaks louder. You are absolutely ready.`
-        });
+      let result;
+      try {
+        result = await callGemini(prompt);
+        if (!result.readinessScore) throw new Error("Invalid AI structure");
+      } catch (err) {
+        console.error("AI Error, using fallback:", err.message);
+        result = {
+          readinessScore: 78,
+          headline: `Strategic ${targetTitle} returning from purposeful break`,
+          summary: `Your background in ${prevIndustry} gives you a unique edge.`,
+          keyStrengths: ["Leadership", "Adaptability"],
+          skillGaps: [{ skill: "Modern Tools", priority: "high", timeToLearn: "2 weeks", reason: "Market requirement" }],
+          topRoles: [{ title: targetTitle, matchScore: 88, industry: targetIndustry, salaryRange, reason: "Direct skill transfer." }],
+          roadmap: [{ phase: 1, title: "Foundation", duration: "Weeks 1-2", tasks: ["Resume optimization"], milestone: "Ready" }],
+          immediateActions: [{ priority: 1, action: "Finalize resume", timeframe: "Today" }],
+          confidenceBoost: `You are ready to face '${biggestChallenge}'.`
+        };
+      }
+
+      // Save to Neon
+      if (user_id) {
+        try {
+          await pool.query(
+            'INSERT INTO onboarding_data (user_id, data) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET data = $2',
+            [user_id, onboardingPayload]
+          );
+          await pool.query(
+            'INSERT INTO analyses (user_id, result) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET result = $2',
+            [user_id, result]
+          );
+          await pool.query(
+            'UPDATE profiles SET onboarding_complete = TRUE WHERE user_id = $1',
+            [user_id]
+          );
+        } catch (dbErr) {
+          console.error("DB Save error:", dbErr.message);
+        }
+      }
+
+      return sendJson(res, 200, result);
     }
+
+    sendJson(res, 404, { error: "Endpoint not found" });
+
+  } catch (err) {
+    console.error("❌ Server Error:", err.message);
+    sendJson(res, 500, { error: err.message });
+  }
 });
 
-server.listen(PORT, () => {
-    console.log(`\n🚀 Re•Entry API server running on http://localhost:${PORT}`);
-    console.log(`   GEMINI_API_KEY: ${GEMINI_API_KEY ? '✅ Loaded' : '❌ MISSING — set it in .env!'}`);
-    console.log(`   Now run "npm run dev" in another terminal to start the frontend.\n`);
+server.listen(PORT, async () => {
+    console.log(`\n🚀 Neon API Server running on http://localhost:${PORT}`);
+    console.log(`📡 Connecting to Neon...`);
+    try {
+        await pool.query('SELECT NOW()');
+        console.log(`✅ Database Connected!`);
+        // Force a clean start to fix type mismatches (UUID vs Serial)
+        console.log(`📦 Re-initializing tables for custom Auth...`);
+        await pool.query(`
+            DROP TABLE IF EXISTS analyses CASCADE;
+            DROP TABLE IF EXISTS onboarding_data CASCADE;
+            DROP TABLE IF EXISTS profiles CASCADE;
+            DROP TABLE IF EXISTS users CASCADE;
+
+            CREATE TABLE users (
+                id SERIAL PRIMARY KEY, 
+                email TEXT UNIQUE NOT NULL, 
+                password TEXT NOT NULL, 
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            CREATE TABLE profiles (
+                user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, 
+                full_name TEXT, 
+                email TEXT, 
+                onboarding_complete BOOLEAN DEFAULT FALSE, 
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            CREATE TABLE onboarding_data (
+                id SERIAL PRIMARY KEY, 
+                user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE, 
+                data JSONB, 
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            CREATE TABLE analyses (
+                id SERIAL PRIMARY KEY, 
+                user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE, 
+                result JSONB, 
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+        `);
+        console.log(`✨ Database Ready!`);
+    } catch (e) {
+        console.error(`❌ DB Connection failed: ${e.message}`);
+    }
 });

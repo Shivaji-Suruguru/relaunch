@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { RotateCcw, Check, Briefcase, Clock, Target, Brain, Trophy, ChevronRight } from 'lucide-react';
-import { supabase } from '../lib/supabase';
 
 const OptionCard = ({ label, selected, onClick }) => (
   <div onClick={onClick} style={{ padding: '16px', borderRadius: '12px', border: `2px solid ${selected ? 'var(--plum)' : 'var(--border)'}`, background: selected ? 'rgba(124, 61, 110, 0.05)' : 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', transition: 'all 0.2s' }}>
@@ -110,7 +109,6 @@ export const OnboardingPage = ({ user, onComplete }) => {
     console.log("✨ Final 'Analyze' clicked. Step:", step);
     if (validate()) {
       setIsSubmitting(true);
-      console.log("✅ All validations passed. Preparing submission...");
       
       const submissionData = { ...data };
       Object.keys(otherInputs).forEach(key => {
@@ -119,35 +117,10 @@ export const OnboardingPage = ({ user, onComplete }) => {
         }
       });
 
-      if (user?.id) {
-        console.log("💾 Saving to Supabase (non-blocking) for user:", user.id);
-        
-        // Background saves
-        supabase.from('onboarding_data').upsert({ 
-          user_id: user.id, 
-          ...submissionData, 
-          created_at: new Date().toISOString() 
-        }).then(({ error }) => {
-          if (error) console.error("❌ onboarding_data save error:", error.message);
-          else console.log("✅ onboarding_data saved.");
-        });
-
-        supabase.from('profiles').upsert({ 
-          id: user.id, 
-          full_name: user.name, 
-          email: user.email, 
-          onboarding_complete: true 
-        }).then(({ error }) => {
-          if (error) console.error("❌ profiles save error:", error.message);
-          else console.log("✅ profile updated (onboarding marked complete).");
-        });
-      }
-
-      console.log("🏁 Triggering onComplete to start AI analysis...");
+      console.log("🏁 Triggering onComplete for Neon DB + AI analysis...");
       onComplete(submissionData);
     } else {
-      console.error("🚫 Submission blocked by validation errors.");
-      setGeneralError('Some required fields are missing.');
+      setGeneralError('Please fix the errors before continuing.');
     }
   };
 

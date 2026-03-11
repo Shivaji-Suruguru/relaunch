@@ -4,17 +4,19 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently \"node apiServer.mjs\" \"vite\"",
     "api": "node apiServer.mjs",
-    "dev-all": "npm run api & npm run dev",
+    "vite": "vite",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.98.0",
+    "bcryptjs": "^3.0.3",
+    "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.577.0",
     "nodemailer": "^8.0.2",
+    "pg": "^8.20.0",
     "pnpm": "^10.32.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
@@ -24,6 +26,7 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "concurrently": "^9.2.1",
     "dotenv": "^17.3.1",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",

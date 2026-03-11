@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Brain, CheckCircle, RotateCcw } from 'lucide-react';
-import { supabase } from '../lib/supabase';
 
 export const AnalyzingPage = ({ user, onboardingData, onComplete }) => {
   const [phase, setPhase] = useState(0);
@@ -24,21 +23,14 @@ export const AnalyzingPage = ({ user, onboardingData, onComplete }) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
+        
         if (!response.ok) {
           const errText = await response.text();
           throw new Error(`API returned ${response.status}: ${errText}`);
         }
+        
         const result = await response.json();
         console.log("📥 [AnalyzingPage] AI Response received:", result);
-
-        if (user?.id) {
-          console.log("💾 [AnalyzingPage] Saving analysis to Supabase (background)...");
-          supabase.from('analyses').upsert({ user_id: user.id, ...result })
-            .then(({ error }) => {
-              if (error) console.error("❌ [AnalyzingPage] Supabase save error:", error.message);
-              else console.log("✅ [AnalyzingPage] Analysis saved to database.");
-            });
-        }
 
         console.log("🚀 [AnalyzingPage] Analysis complete. Notifying App...");
         onComplete(result);

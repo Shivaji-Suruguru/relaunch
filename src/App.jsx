@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from './lib/supabase';
 import { GlobalStyles } from './styles/GlobalStyles';
 import { LandingPage } from './components/LandingPage';
 import { AuthPage } from './components/AuthPage';
@@ -18,86 +17,42 @@ const App = () => {
 
   useEffect(() => {
     checkUser();
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session) {
-        await fetchProfileAndSetState(session.user);
-      } else {
-        setUser(null);
-        setPage('landing');
-      }
-    });
-
-    return () => {
-      if (authListener?.subscription) authListener.subscription.unsubscribe();
-    };
   }, []);
 
   const checkUser = async () => {
-    console.log("🔍 Checking user session...");
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        console.log("👤 Session found for:", session.user.email);
-        await fetchProfileAndSetState(session.user);
-      } else {
-        console.log("📭 No session found.");
+    const token = localStorage.getItem('reentry_token');
+    if (token) {
+      try {
+        const res = await fetch('/api/user/data', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setUser(data.profile ? { id: data.profile.user_id, email: data.profile.email, name: data.profile.full_name } : null);
+          setAnalysis(data.analysis);
+          setOnboardingData(data.onboardingData);
+          if (data.profile?.onboarding_complete) {
+            setPage('dashboard');
+          } else {
+            setPage('onboarding');
+          }
+        }
+      } catch (err) {
+        console.error("Auth check failed:", err.message);
       }
-    } catch (err) {
-      console.error("❌ Session check failed:", err.message);
     }
     setLoading(false);
   };
 
-  const fetchProfileAndSetState = async (authUser) => {
-    console.log("📄 Fetching profile for ID:", authUser.id);
-    try {
-      const { data: profile, error: pError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', authUser.id)
-        .single();
-      
-      if (pError && pError.code !== 'PGRST116') {
-        console.warn("⚠️ Profile table error:", pError.message);
-      }
-
-      const { data: latestAnalysis } = await supabase
-        .from('analyses')
-        .select('*')
-        .eq('user_id', authUser.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
-
-      setUser({ 
-        id: authUser.id, 
-        email: authUser.email, 
-        name: profile?.full_name || authUser.user_metadata?.full_name || 'User' 
-      });
-
-      if (profile?.onboarding_complete) {
-        console.log("✅ Onboarding complete, navigating to dashboard.");
-        setAnalysis(latestAnalysis);
-        setPage('dashboard');
-      } else {
-        console.log("📝 Onboarding incomplete, navigating to onboarding.");
-        setPage('onboarding');
-      }
-    } catch (err) {
-      console.warn("❗ Error in fetchProfileAndSetState:", err.message);
-      setPage('onboarding');
-    }
-  };
-
   const navigate = (to, tab = 'overview') => {
-    console.log(`🧭 Navigating to page: ${to}${tab !== 'overview' ? ' (Tab: ' + tab + ')' : ''}`);
     setPage(to);
     if (to === 'dashboard') setDashboardTab(tab);
     window.scrollTo(0, 0);
   };
 
-  const handleAuth = (userData, needsOnboarding) => {
-    setUser(userData);
+  const handleAuth = (authData, needsOnboarding) => {
+    setUser(authData.user);
+    localStorage.setItem('reentry_token', authData.token);
     if (needsOnboarding) {
       navigate('onboarding');
     } else {
@@ -105,8 +60,8 @@ const App = () => {
     }
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  const handleLogout = () => {
+    localStorage.removeItem('reentry_token');
     setUser(null);
     setPage('landing');
   };
@@ -117,8 +72,9 @@ const App = () => {
   };
 
   const handleAnalysisComplete = (result) => {
-    console.log("📊 handleAnalysisComplete called with result:", result);
     setAnalysis(result);
+    // Refresh user data after analysis to ensure dashboard is ready
+    checkUser();
     navigate('report');
   };
 

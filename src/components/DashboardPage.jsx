@@ -3,7 +3,6 @@ import {
   RotateCcw, Sparkles, LogOut, BarChart, Target, Brain, 
   FileText, MessageSquare, Briefcase
 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
 import { OverviewTab } from './dashboard/OverviewTab';
 import { RoadmapTab } from './dashboard/RoadmapTab';
 import { SkillsTab } from './dashboard/SkillsTab';
