@@ -6,10 +6,37 @@
 import 'dotenv/config';
 import http from 'http';
 
+import nodemailer from 'nodemailer';
+
 const PORT = 3001;
+
+// --- SMTP Configuration ---
+const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'smtp.resend.com',
+    port: parseInt(process.env.SMTP_PORT || '465'),
+    secure: true,
+    auth: {
+        user: process.env.SMTP_USER || 'resend',
+        pass: process.env.SMTP_PASS || 're_4tkRynZx_DHgnuGvU4D5FprKUVs6UhhxE'
+    }
+});
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+
+async function sendEmail(to, subject, html) {
+    try {
+        await transporter.sendMail({
+            from: process.env.SMTP_FROM || '"RelaunchAI" <onboarding@suhask.dev>',
+            to,
+            subject,
+            html
+        });
+        console.log(`📧 Email sent to ${to}`);
+    } catch (err) {
+        console.error('❌ Failed to send email:', err.message);
+    }
+}
 
 async function callGemini(prompt, retries = 2) {
     for (let attempt = 0; attempt < retries; attempt++) {
@@ -64,9 +91,23 @@ async function getBody(req) {
 
 const server = http.createServer(async (req, res) => {
     if (req.method === 'OPTIONS') { sendJson(res, 204, {}); return; }
-    if (req.method !== 'POST') { sendJson(res, 405, { error: 'Method not allowed' }); return; }
-
     const body = await getBody(req);
+    
+    if (req.url === '/api/welcome') {
+        const { email, name } = body;
+        await sendEmail(email, "Welcome to Re•Entry!", `
+            <h1>Hi ${name || 'there'}!</h1>
+            <p>Welcome to Re•Entry. We are excited to help you start your career comeback journey.</p>
+            <p>You can now access your personalized roadmap and AI-driven career tools.</p>
+            <br/>
+            <p>Best regards,</p>
+            <p>The Re•Entry Team</p>
+        `);
+        sendJson(res, 200, { success: true });
+        return;
+    }
+
+    if (req.method !== 'POST') { sendJson(res, 405, { error: 'Method not allowed' }); return; }
     const { name, prevTitle, prevIndustry, yearsExp, prevResponsibilities, breakDuration, breakReason,
         breakActivities, targetTitle, targetIndustry, workType, techSkills, softSkills, tools,
         confidence, timeline, salaryRange, studyHours, biggestChallenge } = body;
