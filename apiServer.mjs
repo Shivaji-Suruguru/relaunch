@@ -39,6 +39,7 @@ async function sendEmail(to, subject, html) {
 }
 
 async function callGemini(prompt, retries = 2) {
+    console.log(`\n🤖 [GEMINI REQUEST]:\n${prompt}\n`);
     for (let attempt = 0; attempt < retries; attempt++) {
         const response = await fetch(GEMINI_URL, {
             method: 'POST',
@@ -49,6 +50,8 @@ async function callGemini(prompt, retries = 2) {
             })
         });
         const data = await response.json();
+        console.log(`\n🤖 [GEMINI RESPONSE DATA]:\n${JSON.stringify(data, null, 2)}\n`);
+        
         if (data?.error) {
             const code = data.error.code;
             console.error(`Gemini API error (attempt ${attempt + 1}): [${code}] ${data.error.message}`);

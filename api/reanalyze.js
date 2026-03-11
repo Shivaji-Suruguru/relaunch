@@ -1,9 +1,10 @@
 export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-    const GEMINI_URL = \`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=\${GEMINI_API_KEY}\`;
+    const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
 
   async function callGemini(prompt) {
+    console.log("🤖 [GEMINI REQUEST]:", prompt);
     const response = await fetch(GEMINI_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -17,19 +18,20 @@ export default async function handler(req, res) {
       })
     });
     const data = await response.json();
+    console.log("🤖 [GEMINI RESPONSE DATA]:", JSON.stringify(data, null, 2));
     const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-    const clean = raw.replace(/\`\`\`json|\`\`\`/g, "").trim();
+    const clean = raw.replace(/```json|```/g, "").trim();
     return JSON.parse(clean || "{}");
   }
 
   const { completedTaskCount, totalTaskCount, skillProgressMap, onboardingData } = req.body;
 
-  const prompt = \`
+  const prompt = `
 You are an expert AI career coach updating a user's readiness score.
 
-The user has completed \${completedTaskCount} out of \${totalTaskCount} tasks on their roadmap.
-Their skill progress is: \${JSON.stringify(skillProgressMap || {})}
-Their original target role was: \${onboardingData?.targetTitle}
+The user has completed ${completedTaskCount} out of ${totalTaskCount} tasks on their roadmap.
+Their skill progress is: ${JSON.stringify(skillProgressMap || {})}
+Their original target role was: ${onboardingData?.targetTitle}
 
 Return ONLY a pure JSON object string without any markdown with:
 {
@@ -38,7 +40,7 @@ Return ONLY a pure JSON object string without any markdown with:
     { "priority": 1, "action": "new action", "timeframe": "Today" }
   ]
 }
-\`;
+`;
 
   try {
     const result = await callGemini(prompt);

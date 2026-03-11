@@ -1,9 +1,10 @@
 export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-    const GEMINI_URL = \`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=\${GEMINI_API_KEY}\`;
+    const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
 
   async function callGemini(prompt) {
+    console.log("🤖 [GEMINI REQUEST]:", prompt);
     const response = await fetch(GEMINI_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -17,18 +18,19 @@ export default async function handler(req, res) {
       })
     });
     const data = await response.json();
+    console.log("🤖 [GEMINI RESPONSE DATA]:", JSON.stringify(data, null, 2));
     const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-    const clean = raw.replace(/\`\`\`json|\`\`\`/g, "").trim();
+    const clean = raw.replace(/```json|```/g, "").trim();
     return JSON.parse(clean || "[]");
   }
 
   const { roleTitle, difficulty } = req.body;
 
-  const prompt = \`
+  const prompt = `
 You are an interview coach creating a practice quiz.
 
-Generate 4 multiple choice interview questions for: \${roleTitle}
-Difficulty: \${difficulty}
+Generate 4 multiple choice interview questions for: ${roleTitle}
+Difficulty: ${difficulty}
 
 Return ONLY a pure JSON array string without markdown of 4 questions:
 [
@@ -39,7 +41,7 @@ Return ONLY a pure JSON array string without markdown of 4 questions:
     "explanation": "why the correct answer is right"
   }
 ]
-\`;
+`;
 
   try {
     const result = await callGemini(prompt);

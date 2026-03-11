@@ -1,9 +1,10 @@
 export default async function handler(req, res) {
-    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-    const GEMINI_URL = \`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=\${GEMINI_API_KEY}\`;
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+  const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
 
   async function callGemini(prompt) {
+    console.log("🤖 [GEMINI REQUEST]:", prompt);
     const response = await fetch(GEMINI_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -17,22 +18,23 @@ export default async function handler(req, res) {
       })
     });
     const data = await response.json();
+    console.log("🤖 [GEMINI RESPONSE DATA]:", JSON.stringify(data, null, 2));
     const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-    const clean = raw.replace(/\`\`\`json|\`\`\`/g, "").trim();
+    const clean = raw.replace(/```json|```/g, "").trim();
     return JSON.parse(clean || "[]");
   }
 
   const { targetTitle, targetIndustry, workType, techSkills, salaryRange } = req.body;
 
-  const prompt = \`
+  const prompt = `
 You are a job market expert and career coach.
 
 Generate 8 realistic job listings for a woman returning to work after a career break.
-Target role: \${targetTitle}
-Industry: \${targetIndustry}
-Work preference: \${workType}
-Skills: \${Array.isArray(techSkills) ? techSkills.join(', ') : techSkills}
-Salary expectation: \${salaryRange}
+Target role: ${targetTitle}
+Industry: ${targetIndustry}
+Work preference: ${workType}
+Skills: ${Array.isArray(techSkills) ? techSkills.join(', ') : techSkills}
+Salary expectation: ${salaryRange}
 
 Return ONLY a pure JSON array string without markdown of 8 jobs:
 [
@@ -51,7 +53,7 @@ Return ONLY a pure JSON array string without markdown of 8 jobs:
     "postedDate": "e.g. 2 days ago"
   }
 ]
-\`;
+`;
 
   try {
     const result = await callGemini(prompt);
