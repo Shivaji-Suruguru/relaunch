@@ -32,26 +32,29 @@ export const AnalyzingPage = ({ user, onboardingData, onComplete }) => {
         console.log("📥 [AnalyzingPage] AI Response received:", result);
 
         if (user?.id) {
-          try {
-            await supabase.from('analyses').upsert({ user_id: user.id, ...result });
-          } catch (dbErr) {
-            console.warn('Supabase save failed (non-critical):', dbErr.message);
-          }
+          console.log("💾 [AnalyzingPage] Saving analysis to Supabase (background)...");
+          supabase.from('analyses').upsert({ user_id: user.id, ...result })
+            .then(({ error }) => {
+              if (error) console.error("❌ [AnalyzingPage] Supabase save error:", error.message);
+              else console.log("✅ [AnalyzingPage] Analysis saved to database.");
+            });
         }
 
-        setTimeout(() => onComplete(result), 1000);
+        console.log("🚀 [AnalyzingPage] Analysis complete. Notifying App...");
+        onComplete(result);
       } catch (err) {
-        console.error("Analysis via API failed, using fallback:", err);
+        console.error("❌ [AnalyzingPage] Analysis process failed:", err);
         const fallbackData = {
           readinessScore: 75,
           headline: "Ready for Re-Entry",
-          summary: "Your past experience provides a solid foundation for your return to the workforce.",
+          summary: "Your background provides a strong base for your return journey.",
           keyStrengths: ["Adaptability", "Prior Industry Knowledge", "Transferable Skills"],
-          skillGaps: [{ skill: "Modern Technical Stack", priority: "high", reason: "Technologies have evolved since your break.", timeToLearn: "2-4 weeks" }],
-          topRoles: [{ title: "Targeted Professional", industry: "Various", salaryRange: "$60K-$80K", matchScore: 80 }],
-          confidenceBoost: "Your break is an asset, not a gap. You have the resilience to succeed!"
+          skillGaps: [{ skill: "Modern Technical Stack", priority: "high", reason: "Tech has evolved.", timeToLearn: "2-4 weeks" }],
+          topRoles: [{ title: onboardingData?.targetTitle || "Professional", industry: onboardingData?.targetIndustry || "Target Industry", salaryRange: onboardingData?.salaryRange || "$60K-$80K", matchScore: 80 }],
+          confidenceBoost: "You have the resilience and skills to succeed in your comeback!"
         };
-        setTimeout(() => onComplete(fallbackData), 1000);
+        console.log("⚠️ [AnalyzingPage] Switching to fallback data due to error.");
+        onComplete(fallbackData);
       }
     };
     performAnalysis();

@@ -90,6 +90,7 @@ const App = () => {
   };
 
   const navigate = (to, tab = 'overview') => {
+    console.log(`🧭 Navigating to page: ${to}${tab !== 'overview' ? ' (Tab: ' + tab + ')' : ''}`);
     setPage(to);
     if (to === 'dashboard') setDashboardTab(tab);
     window.scrollTo(0, 0);
@@ -116,6 +117,7 @@ const App = () => {
   };
 
   const handleAnalysisComplete = (result) => {
+    console.log("📊 handleAnalysisComplete called with result:", result);
     setAnalysis(result);
     navigate('report');
   };
