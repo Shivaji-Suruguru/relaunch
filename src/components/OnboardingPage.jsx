@@ -28,6 +28,7 @@ export const OnboardingPage = ({ user, onComplete }) => {
   const [customSoft, setCustomSoft] = useState('');
   const [errors, setErrors] = useState({});
   const [generalError, setGeneralError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const addCustomSkill = (type) => {
     const skill = type === 'techSkills' ? customTech : customSoft;
@@ -95,9 +96,10 @@ export const OnboardingPage = ({ user, onComplete }) => {
   };
 
   const handleSubmit = async () => {
-    console.log("Submit clicked. Validating...", data);
+    console.log("Analyze clicked. Current state:", data);
     if (validate()) {
-      console.log("Validation passed. Submitting to Supabase...");
+      setIsSubmitting(true);
+      console.log("Validation passed. Saving to Supabase...");
       if (user?.id) {
         try {
           const submissionData = { ...data };
@@ -107,26 +109,32 @@ export const OnboardingPage = ({ user, onComplete }) => {
             }
           });
 
-          await supabase.from('onboarding_data').insert({ 
+          const { error: onboardErr } = await supabase.from('onboarding_data').insert({ 
             user_id: user.id, 
             ...submissionData, 
             created_at: new Date().toISOString() 
           });
+          if (onboardErr) throw onboardErr;
           
-          await supabase.from('profiles').upsert({ 
+          const { error: profileErr } = await supabase.from('profiles').upsert({ 
             id: user.id, 
             full_name: user.name, 
             email: user.email, 
             onboarding_complete: true 
           });
+          if (profileErr) throw profileErr;
 
+          console.log("Data saved successfully. Moving to analysis...");
           onComplete(submissionData);
         } catch (e) {
-          console.warn("Failed to save onboarding session:", e);
+          console.error("Critical: Failed to save onboarding session:", e);
           onComplete(data); 
+        } finally {
+          setIsSubmitting(false);
         }
       } else {
         onComplete(data);
+        setIsSubmitting(false);
       }
     }
   };
@@ -347,11 +355,20 @@ export const OnboardingPage = ({ user, onComplete }) => {
           )}
 
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', marginTop: '48px', paddingTop: '32px', borderTop: '1px solid var(--border)' }}>
-            {step > 1 ? <button className="btn btn-outline" onClick={() => setStep(s => s - 1)}>Back</button> : <div></div>}
+            {step > 1 ? <button className="btn btn-outline" onClick={() => setStep(s => s - 1)} disabled={isSubmitting}>Back</button> : <div></div>}
             {step < 5 ? (
               <button className="btn btn-plum" onClick={handleNext}>Continue <ChevronRight size={18} /></button>
             ) : (
-              <button className="btn btn-plum" style={{ flex: 1, padding: '16px', fontSize: '18px' }} onClick={handleSubmit}>✨ Analyze My Profile</button>
+              <button className="btn btn-plum" style={{ flex: 1, padding: '16px', fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }} onClick={handleSubmit} disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <RotateCcw className="animate-spin" size={20} />
+                    Calculating Your Readiness...
+                  </>
+                ) : (
+                  <>✨ Analyze My Profile</>
+                )}
+              </button>
             )}
           </div>
         </div>

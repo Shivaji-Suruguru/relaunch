@@ -15,15 +15,21 @@ export const AnalyzingPage = ({ user, onboardingData, onComplete }) => {
     }, 1800);
 
     const performAnalysis = async () => {
+      console.log("🎨 [AnalyzingPage] Starting AI analysis with data:", onboardingData);
       try {
         const payload = { ...onboardingData, name: user?.name, user_id: user?.id };
+        console.log("📤 [AnalyzingPage] Sending payload to /api/analyze...");
         const response = await fetch('/api/analyze', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        if (!response.ok) throw new Error(`API returned ${response.status}`);
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`API returned ${response.status}: ${errText}`);
+        }
         const result = await response.json();
+        console.log("📥 [AnalyzingPage] AI Response received:", result);
 
         if (user?.id) {
           try {
