@@ -1,5 +1,9 @@
 -- SUPABASE SCHEMA SETUP (RUN IN SQL EDITOR)
--- This will create the required tables in the 'public' schema.
+-- This will create or update the required tables in the 'public' schema.
+
+-- 0. REPAIR EXISTING TABLES (Run this if you get "column not found" errors)
+ALTER TABLE public.onboarding_data ADD COLUMN IF NOT EXISTS biggestChallenge TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS onboarding_complete BOOLEAN DEFAULT FALSE;
 
 -- 1. Profiles table (Extends Auth.Users)
 CREATE TABLE IF NOT EXISTS public.profiles (
