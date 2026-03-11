@@ -116,6 +116,7 @@ const server = http.createServer(async (req, res) => {
         confidence, timeline, salaryRange, studyHours, biggestChallenge } = body;
 
     console.log(`\n✨ AI Request received for: ${name || 'User'} → Target: ${targetTitle}`);
+    console.log(`📦 Incoming Payload: ${JSON.stringify(body, null, 2)}`);
 
     const prompt = `
 You are an expert AI career coach specializing in helping women professionals return to work after career breaks. Analyze the following user profile and return a detailed, personalized career comeback plan.
