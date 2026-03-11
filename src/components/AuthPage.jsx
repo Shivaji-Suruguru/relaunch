@@ -31,12 +31,20 @@ export const AuthPage = ({ mode: initialMode, onAuth, onBack }) => {
         if (error) throw error;
         
         if (data.user) {
-          await supabase.from('profiles').upsert({ 
+          // Send welcome email (non-blocking)
+          fetch('/api/welcome', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: formData.email, name: formData.name })
+          }).catch(err => console.warn("Welcome email failed:", err));
+
+          const { error: upsertError } = await supabase.from('profiles').upsert({ 
             id: data.user.id, 
             full_name: formData.name, 
             email: formData.email,
             onboarding_complete: false 
-          }).catch(console.warn);
+          });
+          if (upsertError) console.warn("Profile upsert failed:", upsertError.message);
         }
         
         setMessage('Check your email for the confirmation link!');
