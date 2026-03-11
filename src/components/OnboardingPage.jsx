@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 
 const OptionCard = ({ label, selected, onClick }) => (
   <div onClick={onClick} style={{ padding: '16px', borderRadius: '12px', border: `2px solid ${selected ? 'var(--plum)' : 'var(--border)'}`, background: selected ? 'rgba(124, 61, 110, 0.05)' : 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', transition: 'all 0.2s' }}>
-    <div style={{ width: '20px', height: '20px', borderRadius: '50%', border: '2px solid', borderColor: selected ? 'var(--plum)' : 'var(--border)', background: selected ? 'var(--plum)' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ width: '20px', height: '20px', borderRadius: '50%', border: '2px solid', borderColor: selected ? 'var(--plum)' : 'var(--border)' , background: selected ? 'var(--plum)' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {selected && <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'white' }} />}
     </div>
     <span style={{ fontWeight: 500, color: selected ? 'var(--plum)' : 'var(--text)' }}>{label}</span>
@@ -16,12 +16,27 @@ export const OnboardingPage = ({ user, onComplete }) => {
   const [data, setData] = useState({
     prevTitle: '', prevIndustry: '', yearsExp: '', prevResponsibilities: '',
     breakDuration: '', breakReason: '', breakActivities: '',
-    targetTitle: '', targetIndustry: '', workType: '', relocation: '',
+    targetTitle: '', targetIndustry: '', workType: [], relocation: '',
     techSkills: [], softSkills: [], tools: '', confidence: 5,
     timeline: '', salaryRange: '', studyHours: 8, biggestChallenge: ''
   });
+  const [otherInputs, setOtherInputs] = useState({
+    prevIndustry: '', yearsExp: '', breakDuration: '', breakReason: '', 
+    targetIndustry: '', timeline: '', salaryRange: ''
+  });
+  const [customTech, setCustomTech] = useState('');
+  const [customSoft, setCustomSoft] = useState('');
   const [errors, setErrors] = useState({});
   const [generalError, setGeneralError] = useState('');
+
+  const addCustomSkill = (type) => {
+    const skill = type === 'techSkills' ? customTech : customSoft;
+    if (skill.trim() && !data[type].includes(skill.trim())) {
+      setData(prev => ({ ...prev, [type]: [...prev[type], skill.trim()] }));
+      if (type === 'techSkills') setCustomTech('');
+      else setCustomSoft('');
+    }
+  };
 
   const validate = () => {
     let newErrs = {};
@@ -37,7 +52,7 @@ export const OnboardingPage = ({ user, onComplete }) => {
     } else if (step === 3) {
       if (!data.targetTitle) newErrs.targetTitle = 'Required';
       if (!data.targetIndustry) newErrs.targetIndustry = 'Required';
-      if (!data.workType) newErrs.workType = 'Required';
+      if (data.workType.length === 0) newErrs.workType = 'Select at least 1 preference';
       if (!data.relocation) newErrs.relocation = 'Required';
     } else if (step === 4) {
       if (data.techSkills.length === 0) newErrs.techSkills = 'Select at least 1 technical skill';
@@ -46,6 +61,14 @@ export const OnboardingPage = ({ user, onComplete }) => {
       if (!data.salaryRange) newErrs.salaryRange = 'Required';
       if (!data.biggestChallenge) newErrs.biggestChallenge = 'Required';
     }
+
+    // Validation for "Other" fields
+    Object.keys(otherInputs).forEach(key => {
+      if (data[key] === 'Other' && (!otherInputs[key] || !otherInputs[key].trim())) {
+        newErrs[key] = 'Please specify details';
+      }
+    });
+
     setErrors(newErrs);
     if (Object.keys(newErrs).length > 0) {
       setGeneralError('Please fill in all required fields marked with *');
@@ -63,9 +86,16 @@ export const OnboardingPage = ({ user, onComplete }) => {
     if (validate()) {
       if (user?.id) {
         try {
+          const submissionData = { ...data };
+          Object.keys(otherInputs).forEach(key => {
+            if (data[key] === 'Other') {
+              submissionData[key] = otherInputs[key].trim();
+            }
+          });
+
           await supabase.from('onboarding_data').insert({ 
             user_id: user.id, 
-            ...data, 
+            ...submissionData, 
             created_at: new Date().toISOString() 
           });
           
@@ -75,11 +105,15 @@ export const OnboardingPage = ({ user, onComplete }) => {
             email: user.email, 
             onboarding_complete: true 
           });
+
+          onComplete(submissionData);
         } catch (e) {
           console.warn("Failed to save onboarding session:", e);
+          onComplete(data); 
         }
+      } else {
+        onComplete(data);
       }
-      onComplete(data);
     }
   };
 
@@ -93,7 +127,7 @@ export const OnboardingPage = ({ user, onComplete }) => {
         <div style={{ maxWidth: '800px', margin: '0 auto' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <RotateCcw style={{ color: "var(--plum)" }} size={24} /><span className="serif" style={{ fontSize: '20px', fontWeight: 600 }}>Re•Entry</span>
+               <RotateCcw style={{ color: "var(--plum)" }} size={24} /><span className="serif" style={{ fontSize: '20px', fontWeight: 600 }}>Re•Entry</span>
             </div>
             <span style={{ color: 'var(--muted)', fontWeight: 500 }}>Step {step} of 5</span>
           </div>
@@ -123,20 +157,26 @@ export const OnboardingPage = ({ user, onComplete }) => {
                 <h2 className="serif" style={{ fontSize: '32px', marginBottom: '8px' }}>Let's map out your career background</h2>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div><label>Previous Job Title*</label><input type="text" value={data.prevTitle} onChange={e => setData({ ...data, prevTitle: e.target.value })} />{errors.prevTitle && <span style={{ color: 'red' }}>{errors.prevTitle}</span>}</div>
+                <div><label>Previous Job Title* {errors.prevTitle && <span style={{ color: 'red', fontSize: '12px' }}> - {errors.prevTitle}</span>}</label><input type="text" value={data.prevTitle} onChange={e => setData({ ...data, prevTitle: e.target.value })} /></div>
                 <div>
-                  <label>Industry*</label>
+                  <label>Industry* {errors.prevIndustry && <span style={{ color: 'red', fontSize: '12px' }}> - {errors.prevIndustry}</span>}</label>
                   <select value={data.prevIndustry} onChange={e => setData({ ...data, prevIndustry: e.target.value })}>
-                    <option value="">Select Industry...</option><option value="Technology">Technology</option><option value="Finance">Finance</option><option value="Healthcare">Healthcare</option>
+                    <option value="">Select Industry...</option><option value="Technology">Technology</option><option value="Finance">Finance</option><option value="Healthcare">Healthcare</option><option value="Other">Other</option>
                   </select>
+                  {data.prevIndustry === 'Other' && (
+                    <input type="text" placeholder="Specify industry..." value={otherInputs.prevIndustry} onChange={e => setOtherInputs({ ...otherInputs, prevIndustry: e.target.value })} style={{ marginTop: '8px' }} />
+                  )}
                 </div>
                 <div>
-                  <label>Years of Experience*</label>
+                  <label>Years of Experience* {errors.yearsExp && <span style={{ color: 'red', fontSize: '12px' }}> - {errors.yearsExp}</span>}</label>
                   <select value={data.yearsExp} onChange={e => setData({ ...data, yearsExp: e.target.value })}>
-                    <option value="">Select...</option><option value="1-3">1-3 years</option><option value="4-7">4-7 years</option><option value="8-12">8-12 years</option>
+                    <option value="">Select...</option><option value="1-3">1-3 years</option><option value="4-7">4-7 years</option><option value="8-12">8-12 years</option><option value="Other">Other</option>
                   </select>
+                  {data.yearsExp === 'Other' && (
+                    <input type="text" placeholder="Specify years..." value={otherInputs.yearsExp} onChange={e => setOtherInputs({ ...otherInputs, yearsExp: e.target.value })} style={{ marginTop: '8px' }} />
+                  )}
                 </div>
-                <div><label>Key Responsibilities & Achievements*</label><textarea rows={4} value={data.prevResponsibilities} onChange={e => setData({ ...data, prevResponsibilities: e.target.value })} /></div>
+                <div><label>Key Responsibilities & Achievements* {errors.prevResponsibilities && <span style={{ color: 'red', fontSize: '12px' }}> - {errors.prevResponsibilities}</span>}</label><textarea rows={4} value={data.prevResponsibilities} onChange={e => setData({ ...data, prevResponsibilities: e.target.value })} /></div>
               </div>
             </div>
           )}
@@ -149,16 +189,22 @@ export const OnboardingPage = ({ user, onComplete }) => {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <div>
-                  <label>Duration*</label>
+                  <label>Duration* {errors.breakDuration && <span style={{ color: 'red', fontSize: '12px' }}> - {errors.breakDuration}</span>}</label>
                   <select value={data.breakDuration} onChange={e => setData({ ...data, breakDuration: e.target.value })}>
-                    <option value="">Select duration...</option><option value="< 1 year">Less than 1 year</option><option value="1-3 years">1-3 years</option><option value="3-5 years">3-5 years</option>
+                    <option value="">Select duration...</option><option value="< 1 year">Less than 1 year</option><option value="1-3 years">1-3 years</option><option value="3-5 years">3-5 years</option><option value="Other">Other</option>
                   </select>
+                  {data.breakDuration === 'Other' && (
+                    <input type="text" placeholder="Specify duration..." value={otherInputs.breakDuration} onChange={e => setOtherInputs({ ...otherInputs, breakDuration: e.target.value })} style={{ marginTop: '8px' }} />
+                  )}
                 </div>
                 <div>
-                  <label>Primary Reason*</label>
+                  <label>Primary Reason* {errors.breakReason && <span style={{ color: 'red', fontSize: '12px' }}> - {errors.breakReason}</span>}</label>
                   <select value={data.breakReason} onChange={e => setData({ ...data, breakReason: e.target.value })}>
                     <option value="">Select reason...</option><option value="Caregiving (Children)">Caregiving (Children)</option><option value="Personal Health">Personal Health</option><option value="Other">Other</option>
                   </select>
+                  {data.breakReason === 'Other' && (
+                    <input type="text" placeholder="Specify reason..." value={otherInputs.breakReason} onChange={e => setOtherInputs({ ...otherInputs, breakReason: e.target.value })} style={{ marginTop: '8px' }} />
+                  )}
                 </div>
                 <div><label>Activities During Break (Optional)</label><textarea rows={3} value={data.breakActivities} onChange={e => setData({ ...data, breakActivities: e.target.value })} /></div>
               </div>
@@ -172,23 +218,26 @@ export const OnboardingPage = ({ user, onComplete }) => {
                 <h2 className="serif" style={{ fontSize: '32px', marginBottom: '8px' }}>Set your target role</h2>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div><label>Target Job Title*</label><input type="text" value={data.targetTitle} onChange={e => setData({ ...data, targetTitle: e.target.value })} /></div>
+                <div><label>Target Job Title* {errors.targetTitle && <span style={{ color: 'red', fontSize: '12px' }}> - {errors.targetTitle}</span>}</label><input type="text" value={data.targetTitle} onChange={e => setData({ ...data, targetTitle: e.target.value })} /></div>
                 <div>
-                  <label>Target Industry*</label>
+                  <label>Target Industry* {errors.targetIndustry && <span style={{ color: 'red', fontSize: '12px' }}> - {errors.targetIndustry}</span>}</label>
                   <select value={data.targetIndustry} onChange={e => setData({ ...data, targetIndustry: e.target.value })}>
-                    <option value="">Select Industry...</option><option value="Technology">Technology</option><option value="Finance">Finance</option>
+                    <option value="">Select Industry...</option><option value="Technology">Technology</option><option value="Finance">Finance</option><option value="Other">Other</option>
                   </select>
+                  {data.targetIndustry === 'Other' && (
+                    <input type="text" placeholder="Specify industry..." value={otherInputs.targetIndustry} onChange={e => setOtherInputs({ ...otherInputs, targetIndustry: e.target.value })} style={{ marginTop: '8px' }} />
+                  )}
                 </div>
                 <div>
-                  <label>Work Preference*</label>
+                  <label>Work Preference* (Select all that apply) {errors.workType && <span style={{ color: 'red', fontSize: '12px' }}> - {errors.workType}</span>}</label>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }} className="mb-stack">
-                    <OptionCard label="Remote" selected={data.workType === 'Remote'} onClick={() => setData({ ...data, workType: 'Remote' })} />
-                    <OptionCard label="Hybrid" selected={data.workType === 'Hybrid'} onClick={() => setData({ ...data, workType: 'Hybrid' })} />
-                    <OptionCard label="On-site" selected={data.workType === 'On-site'} onClick={() => setData({ ...data, workType: 'On-site' })} />
+                    <OptionCard label="Remote" selected={data.workType.includes('Remote')} onClick={() => toggleSkill('workType', 'Remote')} />
+                    <OptionCard label="Hybrid" selected={data.workType.includes('Hybrid')} onClick={() => toggleSkill('workType', 'Hybrid')} />
+                    <OptionCard label="On-site" selected={data.workType.includes('On-site')} onClick={() => toggleSkill('workType', 'On-site')} />
                   </div>
                 </div>
                 <div>
-                  <label>Open to Relocation?*</label>
+                  <label>Open to Relocation?* {errors.relocation && <span style={{ color: 'red', fontSize: '12px' }}> - {errors.relocation}</span>}</label>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }} className="mb-stack">
                     <OptionCard label="Yes" selected={data.relocation === 'Yes'} onClick={() => setData({ ...data, relocation: 'Yes' })} />
                     <OptionCard label="No" selected={data.relocation === 'No'} onClick={() => setData({ ...data, relocation: 'No' })} />
@@ -206,11 +255,18 @@ export const OnboardingPage = ({ user, onComplete }) => {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                 <div>
-                  <label>Technical Skills* {errors.techSkills && <span style={{ color: 'red' }}>{errors.techSkills}</span>}</label>
+                  <label>Technical Skills* {errors.techSkills && <span style={{ color: 'red', fontSize: '12px' }}> - {errors.techSkills}</span>}</label>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
                     {['Python', 'SQL', 'Excel', 'React', 'Project Management', 'Agile/Scrum', 'Salesforce', 'Figma'].map(s => (
                       <div key={s} className={`chip ${data.techSkills.includes(s) ? 'selected' : ''} `} onClick={() => toggleSkill('techSkills', s)}>{s}</div>
                     ))}
+                    {data.techSkills.filter(s => !['Python', 'SQL', 'Excel', 'React', 'Project Management', 'Agile/Scrum', 'Salesforce', 'Figma'].includes(s)).map(s => (
+                      <div key={s} className="chip selected" onClick={() => toggleSkill('techSkills', s)}>{s} ✕</div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                    <input type="text" placeholder="Add custom tech skill..." value={customTech} onChange={e => setCustomTech(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addCustomSkill('techSkills'))} style={{ height: '38px', fontSize: '14px' }} />
+                    <button type="button" onClick={() => addCustomSkill('techSkills')} className="btn btn-outline" style={{ height: '38px', padding: '0 16px' }}>Add</button>
                   </div>
                 </div>
                 <div>
@@ -219,6 +275,13 @@ export const OnboardingPage = ({ user, onComplete }) => {
                     {['Leadership', 'Communication', 'Problem Solving', 'Adaptability'].map(s => (
                       <div key={s} className={`chip ${data.softSkills.includes(s) ? 'selected' : ''} `} onClick={() => toggleSkill('softSkills', s)}>{s}</div>
                     ))}
+                    {data.softSkills.filter(s => !['Leadership', 'Communication', 'Problem Solving', 'Adaptability'].includes(s)).map(s => (
+                      <div key={s} className="chip selected" onClick={() => toggleSkill('softSkills', s)}>{s} ✕</div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                    <input type="text" placeholder="Add custom soft skill..." value={customSoft} onChange={e => setCustomSoft(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addCustomSkill('softSkills'))} style={{ height: '38px', fontSize: '14px' }} />
+                    <button type="button" onClick={() => addCustomSkill('softSkills')} className="btn btn-outline" style={{ height: '38px', padding: '0 16px' }}>Add</button>
                   </div>
                 </div>
                 <div><label>Tools & Platforms</label><input type="text" value={data.tools} onChange={e => setData({ ...data, tools: e.target.value })} placeholder="e.g. Jira, Slack, HubSpot" /></div>
@@ -238,22 +301,28 @@ export const OnboardingPage = ({ user, onComplete }) => {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <div>
-                  <label>Return Timeline*</label>
+                  <label>Return Timeline* {errors.timeline && <span style={{ color: 'red', fontSize: '12px' }}> - {errors.timeline}</span>}</label>
                   <select value={data.timeline} onChange={e => setData({ ...data, timeline: e.target.value })}>
-                    <option value="">Select...</option><option value="1-3 months">1-3 months</option><option value="3-6 months">3-6 months</option>
+                    <option value="">Select...</option><option value="1-3 months">1-3 months</option><option value="3-6 months">3-6 months</option><option value="Other">Other</option>
                   </select>
+                  {data.timeline === 'Other' && (
+                    <input type="text" placeholder="Specify timeline..." value={otherInputs.timeline} onChange={e => setOtherInputs({ ...otherInputs, timeline: e.target.value })} style={{ marginTop: '8px' }} />
+                  )}
                 </div>
                 <div>
-                  <label>Salary Range*</label>
+                  <label>Salary Range* {errors.salaryRange && <span style={{ color: 'red', fontSize: '12px' }}> - {errors.salaryRange}</span>}</label>
                   <select value={data.salaryRange} onChange={e => setData({ ...data, salaryRange: e.target.value })}>
-                    <option value="">Select...</option><option value="$60K-$80K">$60K-$80K</option><option value="$80K-$100K">$80K-$100K</option>
+                    <option value="">Select...</option><option value="$60K-$80K">$60K-$80K</option><option value="$80K-$100K">$80K-$100K</option><option value="Other">Other</option>
                   </select>
+                  {data.salaryRange === 'Other' && (
+                    <input type="text" placeholder="Specify salary range..." value={otherInputs.salaryRange} onChange={e => setOtherInputs({ ...otherInputs, salaryRange: e.target.value })} style={{ marginTop: '8px' }} />
+                  )}
                 </div>
                 <div>
                   <label>Weekly Study Hours: {data.studyHours}</label>
                   <input type="range" min="2" max="20" value={data.studyHours} onChange={e => setData({ ...data, studyHours: e.target.value })} style={{ padding: 0, height: '4px', background: 'var(--border)' }} />
                 </div>
-                <div><label>Biggest Challenge Right Now*</label><textarea rows={3} value={data.biggestChallenge} onChange={e => setData({ ...data, biggestChallenge: e.target.value })} /></div>
+                <div><label>Biggest Challenge Right Now* {errors.biggestChallenge && <span style={{ color: 'red', fontSize: '12px' }}> - {errors.biggestChallenge}</span>}</label><textarea rows={3} value={data.biggestChallenge} onChange={e => setData({ ...data, biggestChallenge: e.target.value })} /></div>
               </div>
               <div style={{ marginTop: '32px', padding: '16px', background: 'rgba(124, 61, 110, 0.05)', borderRadius: '12px', border: '1px solid var(--border)' }}>
                 <p style={{ color: 'var(--plum)', fontWeight: 500, fontSize: '14px', textAlign: 'center' }}>Your answers are about to be analyzed by our AI. You'll receive a Readiness Score, personalized skill gap report, top job matches, and a 12-week roadmap.</p>
