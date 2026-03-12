@@ -19,7 +19,7 @@ const App = () => {
     checkUser();
   }, []);
 
-  const checkUser = async () => {
+  const checkUser = async (preventNavigation = false) => {
     const token = localStorage.getItem('reentry_token');
     if (token) {
       try {
@@ -31,10 +31,12 @@ const App = () => {
           setUser(data.profile ? { id: data.profile.user_id, email: data.profile.email, name: data.profile.full_name } : null);
           setAnalysis(data.analysis);
           setOnboardingData(data.onboardingData);
-          if (data.profile?.onboarding_complete) {
-            setPage('dashboard');
-          } else {
-            setPage('onboarding');
+          if (!preventNavigation) {
+            if (data.profile?.onboarding_complete) {
+              setPage('dashboard');
+            } else {
+              setPage('onboarding');
+            }
           }
         }
       } catch (err) {
@@ -73,8 +75,8 @@ const App = () => {
 
   const handleAnalysisComplete = (result) => {
     setAnalysis(result);
-    // Refresh user data after analysis to ensure dashboard is ready
-    checkUser();
+    // Refresh user data after analysis to ensure dashboard is ready, but prevent it from navigating away from 'report'
+    checkUser(true);
     navigate('report');
   };
 
