@@ -20,24 +20,16 @@ export const AuthPage = ({ mode: initialMode, onAuth, onBack }) => {
 
     setLoading(true);
     try {
-      const endpoint = mode === 'signup' ? '/api/auth/signup' : '/api/auth/login';
-      const response = await fetch(endpoint, {
+      const response = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({ ...formData, type: mode })
       });
       
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Authentication failed');
 
       if (mode === 'signup') {
-        // Send welcome email (non-blocking)
-        fetch('/api/welcome', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: formData.email, name: formData.name })
-        }).catch(err => console.warn("Welcome email failed:", err));
-        
         onAuth(data, true); // true = needs onboarding
       } else {
         onAuth(data, !data.onboarding_complete);
