@@ -14,8 +14,10 @@ const PORT = 3001;
 const JWT_SECRET = 'relaunch-super-secret-key-123';
 
 // --- Database Connection (Neon) ---
+const dbUrl = new URL(process.env.DATABASE_URL || 'postgres://localhost:5432/postgres');
+dbUrl.searchParams.set('sslmode', 'verify-full');
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL + (process.env.DATABASE_URL.includes('?') ? '&' : '?') + 'sslmode=verify-full',
+  connectionString: dbUrl.toString(),
 });
 
 // --- SMTP Configuration (Resend) ---

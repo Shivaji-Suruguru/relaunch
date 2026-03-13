@@ -20,10 +20,11 @@ export const AuthPage = ({ mode: initialMode, onAuth, onBack }) => {
 
     setLoading(true);
     try {
-      const response = await fetch('/api/auth', {
+      const endpoint = mode === 'signup' ? '/api/auth/signup' : '/api/auth/login';
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, type: mode })
+        body: JSON.stringify(formData)
       });
       
       const data = await response.json();
